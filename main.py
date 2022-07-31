@@ -1,18 +1,16 @@
-import re
-import pyperclip
+# 爬虫模块，易失效。若失效了，请在issues中提出
 import os
-import subprocess
-import requests
-import time
 # from open1 import*
 from download import *
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QUrl, pyqtSignal
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton
+from PyQt5.QtGui import QPalette, QPixmap, QBrush
 import json
 import sys
 import threading as thread  # 导入线程模块, 之后要用
+import logging 
+
 
 # 变量提前定义
 path = os.getcwd()
@@ -21,70 +19,10 @@ headers = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
         Chrome/100.0.4896.127 Safari/537.36 Edg/100.0.1185.44',
 }
-
-
-# 变量提前定义
-
-
-class Window1(QWidget):
-    def __init__(self):
-        self.cookie = ''
-        super().__init__()
-        self.setup()
-
-    def setup(self):
-        self.box = QVBoxLayout(self)  # 创建一个垂直布局来放控件
-        self.btn_get = QPushButton('点击获取cookies')  # 创建一个按钮涌来了点击获取cookie
-        self.btn_get.clicked.connect(self.get_cookie)  # 绑定按钮点击事件
-        self.web = MyWebEngineView()  # 创建浏览器组件对象
-        self.web.resize(800, 600)  # 设置大小
-        self.web.load(QUrl("https://www.bilibili.com"))  # 打开百度页面来测试
-        self.box.addWidget(self.btn_get)  # 将组件放到布局内，先在顶部放一个按钮
-        self.box.addWidget(self.web)  # 再放浏览器
-        self.web.show()  # 最后让页面显示出来
-
-    def get_cookie(self):
-        cookie = self.web.get_cookie()
-        self.cookie = cookie
-
-
-# 创建自己的浏览器控件，继承自QWebEngineView
-class MyWebEngineView(QWebEngineView):
-    # web
-    # it's one of sub windows
-    # 自 https://blog.csdn.net/yueguangMaNong/article/details/81146816 修改
-    # 自 https://blog.csdn.net/he_yang_/article/details/103788918 修改
-    show_main_win_signal = pyqtSignal()
-
-    def __init__(self, *args, **kwargs):
-        super(MyWebEngineView, self).__init__(*args, **kwargs)
-        # 绑定cookie被添加的信号槽
-        QWebEngineProfile.defaultProfile().cookieStore().cookieAdded.connect(self.onCookieAdd)
-        self.cookies = {}  # 存放cookie字典
-
-    def onCookieAdd(self, cookie):  # 处理cookie添加的事件
-        name = cookie.name().data().decode('utf-8')  # 先获取cookie的名字，再把编码处理一下
-        value = cookie.value().data().decode('utf-8')  # 先获取cookie值，再把编码处理一下
-        self.cookies[name] = value  # 将cookie保存到字典里
-
-    def go_main(self):
-        self.show_main_win_signal.emit()
-
-    # 获取cookie
-    def get_cookie(self):
-        cookie_str = ''
-        for key, value in self.cookies.items():  # 遍历字典
-            cookie_str += (key + '=' + value + ';')  # 将键值对拿出来拼接一下
-        return cookie_str
-
-
-# def doit_():
-#     # my_application = QApplication(sys.argv)  # 创建QApplication类的实例
-#     main_demo = Window1()
-#     main_demo.show()
-#     app.exec_()
-#     self.cookie = main_demo.cookie
-
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s %(filename)s %(levelname)s %(message)s',
+                    filename = '.log',
+                    encoding = "utf-8")
 
 class Ui_bilibili_get(object):
     # main window
@@ -92,6 +30,8 @@ class Ui_bilibili_get(object):
     header = headers
 
     def setupUi(self, bilibili_get):
+        self.op = QtWidgets.QGraphicsOpacityEffect()
+        self.op.setOpacity(0.8)
         bilibili_get.setObjectName("bilibili_get")
         bilibili_get.resize(1072, 652)
         bilibili_get.setStyleSheet("QPushButton {\n"
@@ -439,57 +379,81 @@ class Ui_bilibili_get(object):
         self.retranslateUi(bilibili_get)
         self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(bilibili_get)
-        self.cookie_button.clicked.connect(self.open_web)
+        self.cookie_button.clicked.connect(self.getcookie)
         self.sure_button.clicked.connect(self.d)
         self.unsure_button.clicked.connect(self.killer)
+        self.pushButton.clicked.connect(self.search)
 
-    def open_web(self):
+    def getcookie(self):
         if os.path.exists('.\\cookie.json'):
             with open('.\\cookie.json') as f:
                 try:
                     self.cookie = json.load(f)
                 except:
                     self.ztl.append("cookie.json文件错误，请重新获取cookie")
+                    logging.warning("cookie.json文件错误，请重新获取cookie: 文件内容无效")
                     return
                 self.header['cookie'] = self.cookie
-            self.ztl.append("已获取cookie")
+            self.ztl.append(f"已获取cookie: {self.cookie[:50]}...")
+            logging.info('已获取cookie')
+            logging.debug(f'用户cookie值: {self.cookie[:50]}...')
             if self.cookie != '':
                 return
         def _():
-            self.ztl.append("！！请关闭此程序后打开open1.py文件并获得cookie，之后重新打开此文件！！")
-            sys.exit()
+            self.ztl.append("！！请打开open1.py文件并获得cookie，之后重新点击此按钮！！")
+            logging.warning("cookie文件无效，等待获取：文件不存在")
         t = thread.Thread(target=_)
         t.start()
+        del _
 
     # def go_sub(self):
     #     self.show_sub_win_signal.emit()
 
-    def d(self):
+    def d(self): # download file
         def _():
-            self.bv = self.bv_line.text()
-            p = download_video(self.bv, headers=self.header)
-            if self.bv[:2].lower() == 'av':
-                mode = "AV"
+            try:
+                self.bv = eval(self.bv_line.text())
+            except:
+                self.ztl.append("输入格式错误！")
+                logging.debug(f"用户输入格式错误！: {self.bv}")
             else:
-                mode = "BV"
-            if p == 0:
-                self.ztl.append(f"{mode}号为{self.bv}的视频下载完成")
-            else:
-                self.ztl.append(f"{mode}号为{self.bv}的视频下载失败")
+                logging.debug("输入完成")
+                if type(self.bv) == type((1, 2)): # 判断输入类型
+                    # 如果是多个bv
+                    for i in self.bv:
+                        p = download_video(i, headers=self.header)
+                        if p == 0:
+                            logging.debug(f"视频信息：{get_video_info(i, self.header)}")
+                            logging.info(f"视频下载完成：{i}")
+                        else:
+                            self.ztl.append("视频下载失败！")
+                            logging.warning(f"视频{i}下载失败: 结束码异常")
+                else:
+                    # 单个bv
+                    p = download_video(self.bv, headers=self.header)
+                    if p == 0:
+                        logging.debug(f"视频信息：{get_video_info(self.bv, self.header)}")
+                        logging.info(f"视频下载完成：{self.bv}")
+                    else:
+                        self.ztl.append("视频下载失败！")
+                        logging.warning(f"视频{self.bv}下载失败！: 下载线程结束异常，状态码{p}")
 
         do = thread.Thread(target=_)
         do.start()
         del _
-    def killer(self):
+    def killer(self): # taskkill aria2c and ffmpeg
         def _():
             kill()
         t = thread.Thread(target=_)
         t.start()
+        logging.debug("用户取消下载，执行taskkill关闭线程")
+    def search(self):
+        pass
 
     def retranslateUi(self, bilibili_get):
         _translate = QtCore.QCoreApplication.translate
         bilibili_get.setWindowTitle(_translate("bilibili_get", "Widget"))
-        self.bv_line.setText(_translate("bilibili_get", "bv号"))
+        self.bv_line.setText(_translate("bilibili_get", "将bv号使用''包裹着，多个bv号使用英文半角逗号隔开。示例：'BV0001aaa', 'BVnoiabc'"))
         self.sure_button.setText(_translate("bilibili_get", "确定"))
         self.unsure_button.setText(_translate("bilibili_get", "取消"))
         self.cookie_button.setText(_translate("bilibili_get", "获得cookie"))
@@ -657,6 +621,12 @@ class Ui_bilibili_get(object):
         item.setText(_translate("bilibili_get", "av"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(
             self.tab_4), _translate("bilibili_get", "下载列表"))
+        
+        self.tabWidget.setGraphicsEffect(self.op)
+        self.tabWidget.setAutoFillBackground(True)
+        # self.ztl.setGraphicsEffect(self.op)
+        # self.ztl.setAutoFillBackground(True)
+
         self.pushButton.setText(_translate("bilibili_get", "确定"))
         self.lineEdit.setText(_translate("bilibili_get", "搜索内容"))
         self.pushButton_2.setText(_translate("bilibili_get", "下载全部"))
@@ -665,11 +635,28 @@ class Ui_bilibili_get(object):
             self.tab_5), _translate("bilibili_get", "搜索列表"))
 
 
-if __name__ == '__main__':
-    app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui=Ui_bilibili_get()
+# if __name__ == '__main__':
+#     app = QtWidgets.QApplication(sys.argv)
+#     MainWindow = QtWidgets.QMainWindow()
+#     ui=Ui_bilibili_get()
 
-    ui.setupUi(MainWindow)
-    MainWindow.show()
+#     ui.setupUi(MainWindow)
+#     MainWindow.show()
+#     sys.exit(app.exec_())
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    logging.debug("程序启动成功")
+    w = QWidget()
+    ui = Ui_bilibili_get()
+    ui.setupUi(w)
+    logging.debug("窗口初始化成功")
+    w.resize((1072), (647))
+    palette = QPalette()
+    pix = QPixmap("./background.jpg")
+    pix = pix.scaled(w.width(),w.height())
+    palette.setBrush(QPalette.Background, QBrush(pix))
+    w.setPalette(palette)
+    logging.debug("窗口背景设置成功")
+    w.show()
+    logging.debug("窗口显示成功")
     sys.exit(app.exec_())

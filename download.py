@@ -1,4 +1,5 @@
 # from open1 import*
+import json
 import time
 import requests
 import subprocess
@@ -8,11 +9,7 @@ import re
 # 变量提前定义
 path = os.getcwd()
 os.chdir(path)
-header = {
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
-        Chrome/100.0.4896.127 Safari/537.36 Edg/100.0.1185.44',
-    'cookie': '_uuid=58E9F87D-9DF9-86910-D972-6102E4810EE72166149infoc; buvid3=C7D600BB-47C0-BCC4-9065-E11C902B271566461infoc; b_nut=1649515067; buvid4=FFAC8272-235A-96BD-D6EE-551C4D84EF7166461-022040922-+hGGnoawvNgIhx/+uEHLiElOrSLpLtIWWxgdx51sLIVZ4T78x4hr4w%3D%3D; nostalgia_conf=-1; CURRENT_BLACKGAP=0; buvid_fp_plain=undefined; blackside_state=0; rpdid=0zbfVGhipD|k9P7lIuA|1x1|3w1NDmsy; LIVE_BUVID=AUTO7716495683704445; fingerprint3=d4e5aed0143b24edfba50fc3ac142151; i-wanna-go-back=-1; CURRENT_QUALITY=80; fingerprint=c4e14d52aaa2f1a564f71c6b2d3d6c2d; SESSDATA=5afffe4d%2C1666185978%2C3c686%2A41; bili_jct=994a343f0f648982846ecb9ae5fd75a5; DedeUserID=450158456; DedeUserID__ckMd5=f1b89c51453a6646; sid=johfkykh; b_ut=5; buvid_fp=c4e14d52aaa2f1a564f71c6b2d3d6c2d; b_lsid=710E4C6F5_18051759290; bsource=search_bing; bp_video_offset_450158456=651968725507899400; PVID=1; innersign=0; CURRENT_FNVAL=80',
-}
+
 # 变量提前定义
 # header['cookie'] = get_cookie()\
 
@@ -35,7 +32,9 @@ sess = requests.session()
 https://api.bilibili.com/x/web-interface/nav
 '''
 
-
+class DownloadErr(Exception):
+    def __init__(self, message):
+        self.message = message
 def get_bv_from_url(text):
     pattern = re.compile(r'https://www.bilibili.com/video/(.+)?\?.*')
     bv = re.findall(pattern, text)
@@ -60,6 +59,20 @@ def get_user_info(headers):
     return resp
 
 
+def get_cid(bv, headers):
+    __url = "https://api.bilibili.com/x/web-interface/view"
+    data = {
+        'bvid': bv,
+    }
+    resp = requests.get(__url, headers=headers, params=data)
+    resp.encoding = 'utf-8'
+    resp.raise_for_status()
+    json_response = resp.json()
+    return_text = []
+    # print(json_response)
+    for i in json_response['data']['pages']:
+        return_text.append(i['cid'])
+    return return_text
 def get_video_info(bv, headers):
     def get_cid():
         __url = "https://api.bilibili.com/x/web-interface/view"
@@ -73,7 +86,7 @@ def get_video_info(bv, headers):
         return_text = []
         # print(json_response)
         try:
-            for i in json_response['data']:
+            for i in json_response['data']['pages']:
                 return_text.append(i['cid'])
         except:
             return_text.append(json_response['data']['cid'])
@@ -89,7 +102,10 @@ def get_video_info(bv, headers):
             'fnval': '16',
         }
         session = sess
-        response = session.get(_url, params=_params, headers=headers)
+        try:
+            response = session.get(_url, params=_params, headers=headers)
+        except requests.exceptions.ConnectionError as ce:
+            raise DownloadErr(f"错误：{ce}")
         response.encoding = 'utf-8'
         response.raise_for_status()
         resp = response.json()
@@ -140,11 +156,14 @@ def download_music(json, bv, page=1, name=None):
     subprocess.call(ds)
     return {'filename': name+'.mp3', 'name': name}
 
+
 def clean(filename):
     subprocess.call(f"del {path}\\temp\\{filename}", shell=True)
+
+
 def download_video(bv, headers, page=1):
     try:
-        json = get_video_info(bv, headers)
+        json1 = get_video_info(bv, headers)
     except KeyError:
         return 1
     a = ''
@@ -155,13 +174,23 @@ def download_video(bv, headers, page=1):
     # except:
     #     a = download(json, bv, page)
     try:
-        url = json['data']['dash']['video'][0]['baseUrl']
-        title = get_video_title_or_desc(bv, headers=headers)['title']
-        a = download(url, bv, page, name=title)
-        url=json['data']['dash']['audio'][0]['baseUrl']
-        b=download_music(
-            url, bv, page, name=title)
+        if type(json1) == type([1, 2, 3]):
+            url = json1[0]['data']['dash']['video'][0]['baseUrl']
+            title = get_video_title_or_desc(bv, headers=headers)['title']
+            a = download(url, bv, page, name=title)
+            url=json1[0]['data']['dash']['audio'][0]['baseUrl']
+            b=download_music(
+                url, bv, page, name=title)
+        else:
+            url = json1['data']['dash']['video'][0]['baseUrl']
+            title = get_video_title_or_desc(bv, headers=headers)['title']
+            a = download(url, bv, page, name=title)
+            url = json1['data']['dash']['audio'][0]['baseUrl']
+            b = download_music(
+                url, bv, page, name=title)
     except:
+        with open('test.json', 'w') as f:
+            json.dump(json1, f)
         return 1
     # 调用ffmpeg
     # 输入命令像这样: ffmpeg -y -i  D:\\ffmpeg_test\\1.webm  -r 30  D:\\ffmpeg_test\\1.mp4
@@ -179,5 +208,6 @@ def kill():
     subprocess.call(f"taskkill /F /PID aria2c.exe")
     subprocess.call(f"taskkill /F /PID ffmpeg.exe")
 
+
 # test
-# download_video('BV1TE411h7vY', headers=header)
+# download_video('BV1Gf4y1o7jY', headers=header)
